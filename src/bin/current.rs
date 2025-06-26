@@ -19,7 +19,7 @@ struct IntensityData {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter = match std::env::var("RUST_LOG") {
-        Ok(level) if level == "trace" => "carbon_vibe=trace,warn".to_string(),
+        Ok(level) if level == "trace" => "current=trace,warn".to_string(),
         Ok(level) => level,
         Err(_) => "info".to_string(),
     };
