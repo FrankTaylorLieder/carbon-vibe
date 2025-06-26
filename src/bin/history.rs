@@ -71,7 +71,7 @@ async fn fetch_carbon_intensity_history() -> Result<(), Box<dyn std::error::Erro
             .or(entry.intensity.forecast)
             .unwrap_or(0);
         
-        hourly_data.entry(hour_key).or_insert_with(Vec::new).push(intensity);
+        hourly_data.entry(hour_key).or_default().push(intensity);
     }
     
     // Print hourly averages

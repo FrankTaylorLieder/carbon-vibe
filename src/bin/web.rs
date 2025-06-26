@@ -1,8 +1,4 @@
-use axum::{
-    response::Html,
-    routing::get,
-    Router,
-};
+use axum::{Router, response::Html, routing::get};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
@@ -90,12 +86,14 @@ struct IntensityPoint {
     is_forecast: bool,
 }
 
-
-async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>, Vec<IntensityPoint>), Box<dyn std::error::Error>> {
+async fn fetch_carbon_data()
+-> Result<(i32, Vec<FuelSourceWithIntensity>, Vec<IntensityPoint>), Box<dyn std::error::Error>> {
     // Fetch current intensity
     let intensity_response = reqwest::get("https://api.carbonintensity.org.uk/intensity").await?;
     let intensity_data: CarbonIntensityData = intensity_response.json().await?;
-    let intensity = intensity_data.data.first()
+    let intensity = intensity_data
+        .data
+        .first()
         .and_then(|entry| entry.intensity.actual.or(entry.intensity.forecast))
         .unwrap_or(0);
 
@@ -105,60 +103,76 @@ async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>, Vec<I
     let generation_mix = mix_data.data.generation_mix;
 
     // Fetch carbon factors
-    let factors_response = reqwest::get("https://api.carbonintensity.org.uk/intensity/factors").await?;
+    let factors_response =
+        reqwest::get("https://api.carbonintensity.org.uk/intensity/factors").await?;
     let factors_data: CarbonFactorsData = factors_response.json().await?;
-    let factors = factors_data.data.first().ok_or("No factors data available")?;
+    let factors = factors_data
+        .data
+        .first()
+        .ok_or("No factors data available")?;
 
     // Combine generation mix with carbon intensity factors
-    let enriched_mix = generation_mix.into_iter().map(|fuel| {
-        let carbon_intensity = match fuel.fuel.as_str() {
-            "biomass" => factors.biomass,
-            "coal" => factors.coal,
-            "gas" => factors.gas_combined_cycle, // Default to combined cycle
-            "hydro" => factors.hydro,
-            "nuclear" => factors.nuclear,
-            "other" => factors.other,
-            "solar" => factors.solar,
-            "wind" => factors.wind,
-            "imports" => (factors.dutch_imports + factors.french_imports + factors.irish_imports) / 3, // Average imports
-            _ => 0,
-        };
+    let enriched_mix = generation_mix
+        .into_iter()
+        .map(|fuel| {
+            let carbon_intensity = match fuel.fuel.as_str() {
+                "biomass" => factors.biomass,
+                "coal" => factors.coal,
+                "gas" => factors.gas_combined_cycle, // Default to combined cycle
+                "hydro" => factors.hydro,
+                "nuclear" => factors.nuclear,
+                "other" => factors.other,
+                "solar" => factors.solar,
+                "wind" => factors.wind,
+                "imports" => {
+                    (factors.dutch_imports + factors.french_imports + factors.irish_imports) / 3
+                } // Average imports
+                _ => 0,
+            };
 
-        FuelSourceWithIntensity {
-            fuel: fuel.fuel,
-            perc: fuel.perc,
-            carbon_intensity,
-        }
-    }).collect();
+            FuelSourceWithIntensity {
+                fuel: fuel.fuel,
+                perc: fuel.perc,
+                carbon_intensity,
+            }
+        })
+        .collect();
 
     // Fetch 24-hour timeline data (12 hours past + 12 hours future)
     let now = chrono::Utc::now();
     let twelve_hours_ago = now - chrono::Duration::hours(12);
     let twelve_hours_future = now + chrono::Duration::hours(12);
-    
+
     let from_date = twelve_hours_ago.format("%Y-%m-%dT%H:%MZ").to_string();
     let to_date = twelve_hours_future.format("%Y-%m-%dT%H:%MZ").to_string();
-    
+
     let timeline_url = format!(
         "https://api.carbonintensity.org.uk/intensity/{}/{}",
         from_date, to_date
     );
-    
+
     let timeline_response = reqwest::get(&timeline_url).await?;
     let timeline_data: CarbonIntensityData = timeline_response.json().await?;
-    
+
     // Process timeline data into points
-    let timeline_points: Vec<IntensityPoint> = timeline_data.data.into_iter().filter_map(|entry| {
-        let datetime = entry.from?;
-        let intensity = entry.intensity.actual.unwrap_or(entry.intensity.forecast.unwrap_or(0));
-        let is_forecast = entry.intensity.actual.is_none();
-        
-        Some(IntensityPoint {
-            datetime,
-            intensity,
-            is_forecast,
+    let timeline_points: Vec<IntensityPoint> = timeline_data
+        .data
+        .into_iter()
+        .filter_map(|entry| {
+            let datetime = entry.from?;
+            let intensity = entry
+                .intensity
+                .actual
+                .unwrap_or(entry.intensity.forecast.unwrap_or(0));
+            let is_forecast = entry.intensity.actual.is_none();
+
+            Some(IntensityPoint {
+                datetime,
+                intensity,
+                is_forecast,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok((intensity, enriched_mix, timeline_points))
 }
@@ -167,15 +181,20 @@ async fn serve_app() -> Html<String> {
     // Fetch data server-side
     let (intensity, generation_mix, timeline_points) = match fetch_carbon_data().await {
         Ok(data) => {
-            println!("Successfully fetched data: intensity={}, mix_items={}, timeline_points={}", data.0, data.1.len(), data.2.len());
+            println!(
+                "Successfully fetched data: intensity={}, mix_items={}, timeline_points={}",
+                data.0,
+                data.1.len(),
+                data.2.len()
+            );
             data
-        },
+        }
         Err(e) => {
             println!("Error fetching data: {}", e);
             (0, vec![], vec![])
         }
     };
-    
+
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -237,111 +256,114 @@ async fn serve_app() -> Html<String> {
         render_pie_chart(&generation_mix),
         render_legend(&generation_mix)
     );
-    
+
     Html(html)
 }
 
 fn render_pie_chart(generation_mix: &[FuelSourceWithIntensity]) -> String {
     let colors = vec![
-        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57",
-        "#FF9FF3", "#54A0FF", "#5F27CD", "#00D2D3", "#FF9F43",
-        "#EE5A24", "#0ABDE3", "#10AC84", "#F79F1F", "#A3CB38"
+        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57", "#FF9FF3", "#54A0FF", "#5F27CD",
+        "#00D2D3", "#FF9F43", "#EE5A24", "#0ABDE3", "#10AC84", "#F79F1F", "#A3CB38",
     ];
-    
+
     let total: f64 = generation_mix.iter().map(|f| f.perc).sum();
     let mut start_angle = 0.0;
     let mut elements = String::new();
-    
+
     for (i, fuel) in generation_mix.iter().enumerate() {
         let percentage = fuel.perc / total;
         let angle = percentage * 2.0 * std::f64::consts::PI;
         let end_angle = start_angle + angle;
-        
+
         // Skip very small segments for labels but still draw them
         let show_label = fuel.perc >= 0.5;
-        
+
         let center_x = 250.0;
         let center_y = 250.0;
         let radius = 150.0;
-        
+
         let x1 = center_x + radius * start_angle.cos();
         let y1 = center_y + radius * start_angle.sin();
         let x2 = center_x + radius * end_angle.cos();
         let y2 = center_y + radius * end_angle.sin();
-        
+
         let large_arc = if angle > std::f64::consts::PI { 1 } else { 0 };
-        
+
         // Create pie segment path
         let path = format!(
             "M {} {} L {} {} A {} {} 0 {} 1 {} {} Z",
             center_x, center_y, x1, y1, radius, radius, large_arc, x2, y2
         );
-        
+
         let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
-        
+
         // Add pie segment
         elements.push_str(&format!(
             r#"<path d="{}" fill="{}" stroke="white" stroke-width="2" />"#,
             path, color
         ));
-        
+
         // Add label only for segments that are large enough
         if show_label {
             // Calculate label position (middle of arc, closer to the pie)
             let mid_angle = start_angle + angle / 2.0;
             let label_radius = 175.0; // Closer to the pie edge
-            
+
             let label_x = center_x + label_radius * mid_angle.cos();
             let label_y = center_y + label_radius * mid_angle.sin();
-            
+
             // Center-align all text
             let text_anchor = "middle";
-            
+
             // Add label text (closer to pie, no connecting line)
             elements.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"bold\" fill=\"#333333\">{}</text>",
                 label_x, label_y - 2.0, text_anchor, fuel.fuel
             ));
-            
+
             // Add percentage on a second line
             elements.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#666666\">{:.1}%</text>",
                 label_x, label_y + 10.0, text_anchor, fuel.perc
             ));
         }
-        
+
         start_angle = end_angle;
     }
-    
+
     elements
 }
 
 fn render_legend(generation_mix: &[FuelSourceWithIntensity]) -> String {
     let colors = vec![
-        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57",
-        "#FF9FF3", "#54A0FF", "#5F27CD", "#00D2D3", "#FF9F43",
-        "#EE5A24", "#0ABDE3", "#10AC84", "#F79F1F", "#A3CB38"
+        "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57", "#FF9FF3", "#54A0FF", "#5F27CD",
+        "#00D2D3", "#FF9F43", "#EE5A24", "#0ABDE3", "#10AC84", "#F79F1F", "#A3CB38",
     ];
-    
-    generation_mix.iter().enumerate().map(|(i, fuel)| {
-        let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
-        let intensity_text = if fuel.carbon_intensity == 0 {
-            "0 gCO₂/kWh".to_string()
-        } else {
-            format!("{} gCO₂/kWh", fuel.carbon_intensity)
-        };
-        
-        format!(
-            r#"<div class="legend-item">
+
+    generation_mix
+        .iter()
+        .enumerate()
+        .map(|(i, fuel)| {
+            let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
+            let intensity_text = if fuel.carbon_intensity == 0 {
+                "0 gCO₂/kWh".to_string()
+            } else {
+                format!("{} gCO₂/kWh", fuel.carbon_intensity)
+            };
+
+            format!(
+                r#"<div class="legend-item">
                 <div class="legend-color" style="background-color: {}"></div>
                 <div class="legend-info">
                     <span class="legend-label">{}</span>
                     <span class="legend-details">{:.1}% • {}</span>
                 </div>
             </div>"#,
-            color, fuel.fuel, fuel.perc, intensity_text
-        )
-    }).collect::<Vec<_>>().join("")
+                color, fuel.fuel, fuel.perc, intensity_text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
@@ -357,108 +379,120 @@ fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
     let margin_bottom = 40.0;
     let chart_width = width - margin_left - margin_right;
     let chart_height = height - margin_top - margin_bottom;
-    
+
     // Find min and max intensity for scaling
     let intensities: Vec<i32> = timeline_points.iter().map(|p| p.intensity).collect();
     let min_intensity = *intensities.iter().min().unwrap_or(&0) as f64;
     let max_intensity = *intensities.iter().max().unwrap_or(&100) as f64;
     let intensity_range = max_intensity - min_intensity;
-    
+
     if intensity_range == 0.0 {
         return String::new();
     }
-    
+
     // Generate path data
     let mut path_data = String::new();
     let mut forecast_path_data = String::new();
-    
+
     for (i, point) in timeline_points.iter().enumerate() {
         let x = margin_left + (i as f64 / (timeline_points.len() - 1) as f64) * chart_width;
-        let y = margin_top + chart_height - ((point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
-        
+        let y = margin_top + chart_height
+            - ((point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
+
         if i == 0 {
             if point.is_forecast {
                 forecast_path_data = format!("M {} {}", x, y);
             } else {
                 path_data = format!("M {} {}", x, y);
             }
-        } else {
-            if point.is_forecast {
-                if forecast_path_data.is_empty() {
-                    // Start forecast path from last historical point
-                    if let Some(prev_point) = timeline_points.get(i - 1) {
-                        let prev_x = margin_left + ((i - 1) as f64 / (timeline_points.len() - 1) as f64) * chart_width;
-                        let prev_y = margin_top + chart_height - ((prev_point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
-                        forecast_path_data = format!("M {} {} L {} {}", prev_x, prev_y, x, y);
-                    } else {
-                        forecast_path_data = format!("M {} {}", x, y);
-                    }
+        } else if point.is_forecast {
+            if forecast_path_data.is_empty() {
+                // Start forecast path from last historical point
+                if let Some(prev_point) = timeline_points.get(i - 1) {
+                    let prev_x = margin_left
+                        + ((i - 1) as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+                    let prev_y = margin_top + chart_height
+                        - ((prev_point.intensity as f64 - min_intensity) / intensity_range)
+                            * chart_height;
+                    forecast_path_data = format!("M {} {} L {} {}", prev_x, prev_y, x, y);
                 } else {
-                    forecast_path_data.push_str(&format!(" L {} {}", x, y));
+                    forecast_path_data = format!("M {} {}", x, y);
                 }
             } else {
-                path_data.push_str(&format!(" L {} {}", x, y));
+                forecast_path_data.push_str(&format!(" L {} {}", x, y));
             }
+        } else {
+            path_data.push_str(&format!(" L {} {}", x, y));
         }
     }
-    
+
     // Find current time marker
     let now = chrono::Utc::now();
-    let current_index = timeline_points.iter().position(|p| {
-        if let Ok(point_time) = chrono::DateTime::parse_from_str(&p.datetime, "%Y-%m-%dT%H:%MZ") {
-            point_time.timestamp() > now.timestamp()
-        } else {
-            false
-        }
-    }).unwrap_or(timeline_points.len() / 2);
-    
-    let current_x = margin_left + (current_index as f64 / (timeline_points.len() - 1) as f64) * chart_width;
-    
+    let current_index = timeline_points
+        .iter()
+        .position(|p| {
+            if let Ok(point_time) = chrono::DateTime::parse_from_str(&p.datetime, "%Y-%m-%dT%H:%MZ")
+            {
+                point_time.timestamp() > now.timestamp()
+            } else {
+                false
+            }
+        })
+        .unwrap_or(timeline_points.len() / 2);
+
+    let current_x =
+        margin_left + (current_index as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+
     // Calculate Y-axis labels (every 20 units, rounded)
     let y_step = ((max_intensity - min_intensity) / 4.0).ceil().max(20.0);
     let y_start = (min_intensity / y_step).floor() * y_step;
     let y_end = (max_intensity / y_step).ceil() * y_step;
-    
+
     // Generate Y-axis labels
     let mut y_labels = String::new();
     let mut y_grid_lines = String::new();
     let mut current_y_value = y_start;
     while current_y_value <= y_end {
-        let y_pos = margin_top + chart_height - ((current_y_value - min_intensity) / intensity_range) * chart_height;
-        
+        let y_pos = margin_top + chart_height
+            - ((current_y_value - min_intensity) / intensity_range) * chart_height;
+
         // Y-axis label
         y_labels.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#6c757d\" text-anchor=\"end\">{}</text>",
             margin_left - 5.0, y_pos + 3.0, current_y_value as i32
         ));
-        
+
         // Horizontal grid line
         y_grid_lines.push_str(&format!(
             "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\"/>",
-            margin_left, y_pos, margin_left + chart_width, y_pos
+            margin_left,
+            y_pos,
+            margin_left + chart_width,
+            y_pos
         ));
-        
+
         current_y_value += y_step;
     }
-    
+
     // Generate X-axis markers every 2 hours (8 points since we have 48 points over 24 hours)
     let mut x_labels = String::new();
     let mut x_grid_lines = String::new();
     let _hours_per_point = 0.5; // 30-minute intervals
     let now = chrono::Utc::now();
     let twelve_hours_ago = now - chrono::Duration::hours(12);
-    
-    for i in (0..timeline_points.len()).step_by(4) { // Every 4 points = 2 hours
+
+    for i in (0..timeline_points.len()).step_by(4) {
+        // Every 4 points = 2 hours
         let x_pos = margin_left + (i as f64 / (timeline_points.len() - 1) as f64) * chart_width;
         let time_offset = twelve_hours_ago + chrono::Duration::minutes((i as f64 * 30.0) as i64);
         let time_label = time_offset.format("%H:%M").to_string();
-        
+
         // X-axis label
         x_labels.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"9\" fill=\"#6c757d\" text-anchor=\"middle\">{}</text>",
             x_pos, height - 5.0, time_label
         ));
-        
+
         // Vertical grid line
         x_grid_lines.push_str(&format!(
             "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\" opacity=\"0.5\"/>",
@@ -523,3 +557,4 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
+
