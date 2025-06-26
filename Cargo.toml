@@ -11,6 +11,10 @@ path = "src/bin/current.rs"
 name = "history"
 path = "src/bin/history.rs"
 
+[[bin]]
+name = "web"
+path = "src/bin/web.rs"
+
 [dependencies]
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -19,3 +23,9 @@ tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
+leptos = { version = "0.6", features = ["csr"] }
+leptos_axum = "0.6"
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs"] }
+wasm-bindgen = "0.2"

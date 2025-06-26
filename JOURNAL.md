@@ -9,4 +9,7 @@
 - Added a second CLI to show the hourly intensity history for the last 12 hours.
   - As the API has 30 minute intervals, it showed all results. Asked it to combine the readings to create 12 hourly readings.
   - I asked it to explain how it combined the readings into one hourly reading (it was averaging them).
+- Create a leptos web app to display the current intensity and a pie chart with the energy source breakdown, showing per-source carbon intensity levels.
+
+- ASIDE: I'd like to get CC to keep a transcript of the interactions with the project in a log file in the project... need to ask how to do that next.
 
