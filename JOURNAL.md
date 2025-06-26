@@ -15,7 +15,7 @@
 - Asked for labels on each segment, arrayed around the outside of the pie, with lines indicating which segment that refer to.
   - Some of the labels are cut off... asked to remove the lines and place the labels closer.
     - This has worked.
-- TODO Update the pie chart to show the carbon intensity of each source.
+- Updated the pie chart to show the carbon intensity of each source.
 - ASIDE: I'd like to get CC to keep a transcript of the interactions with the project in a log file in the project... need to ask how to do that next.
   - It does not have this feature, but can help you manually create one.
   - You can ask it to create a DEVELOPMENT log showing what it's done.

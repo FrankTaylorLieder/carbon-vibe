@@ -40,8 +40,48 @@ struct FuelSource {
     perc: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CarbonFactorsData {
+    data: Vec<CarbonFactors>,
+}
 
-async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSource>), Box<dyn std::error::Error>> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CarbonFactors {
+    #[serde(rename = "Biomass")]
+    biomass: i32,
+    #[serde(rename = "Coal")]
+    coal: i32,
+    #[serde(rename = "Gas (Combined Cycle)")]
+    gas_combined_cycle: i32,
+    #[serde(rename = "Gas (Open Cycle)")]
+    gas_open_cycle: i32,
+    #[serde(rename = "Hydro")]
+    hydro: i32,
+    #[serde(rename = "Nuclear")]
+    nuclear: i32,
+    #[serde(rename = "Other")]
+    other: i32,
+    #[serde(rename = "Solar")]
+    solar: i32,
+    #[serde(rename = "Wind")]
+    wind: i32,
+    #[serde(rename = "Dutch Imports")]
+    dutch_imports: i32,
+    #[serde(rename = "French Imports")]
+    french_imports: i32,
+    #[serde(rename = "Irish Imports")]
+    irish_imports: i32,
+}
+
+#[derive(Clone, Debug)]
+struct FuelSourceWithIntensity {
+    fuel: String,
+    perc: f64,
+    carbon_intensity: i32,
+}
+
+
+async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>), Box<dyn std::error::Error>> {
     // Fetch current intensity
     let intensity_response = reqwest::get("https://api.carbonintensity.org.uk/intensity").await?;
     let intensity_data: CarbonIntensityData = intensity_response.json().await?;
@@ -54,7 +94,34 @@ async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSource>), Box<dyn std::erro
     let mix_data: GenerationMixData = mix_response.json().await?;
     let generation_mix = mix_data.data.generation_mix;
 
-    Ok((intensity, generation_mix))
+    // Fetch carbon factors
+    let factors_response = reqwest::get("https://api.carbonintensity.org.uk/intensity/factors").await?;
+    let factors_data: CarbonFactorsData = factors_response.json().await?;
+    let factors = factors_data.data.first().ok_or("No factors data available")?;
+
+    // Combine generation mix with carbon intensity factors
+    let enriched_mix = generation_mix.into_iter().map(|fuel| {
+        let carbon_intensity = match fuel.fuel.as_str() {
+            "biomass" => factors.biomass,
+            "coal" => factors.coal,
+            "gas" => factors.gas_combined_cycle, // Default to combined cycle
+            "hydro" => factors.hydro,
+            "nuclear" => factors.nuclear,
+            "other" => factors.other,
+            "solar" => factors.solar,
+            "wind" => factors.wind,
+            "imports" => (factors.dutch_imports + factors.french_imports + factors.irish_imports) / 3, // Average imports
+            _ => 0,
+        };
+
+        FuelSourceWithIntensity {
+            fuel: fuel.fuel,
+            perc: fuel.perc,
+            carbon_intensity,
+        }
+    }).collect();
+
+    Ok((intensity, enriched_mix))
 }
 
 async fn serve_app() -> Html<String> {
@@ -85,11 +152,12 @@ async fn serve_app() -> Html<String> {
         .unit {{ font-size: 0.4em; color: #7f8c8d; }}
         .generation-mix {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
         .chart-container {{ display: flex; justify-content: center; margin: 20px 0; }}
-        .legend-items {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
-        .legend-item {{ display: flex; align-items: center; gap: 10px; }}
-        .legend-color {{ width: 20px; height: 20px; border-radius: 3px; }}
-        .legend-label {{ flex: 1; }}
-        .legend-value {{ font-weight: bold; }}
+        .legend-items {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }}
+        .legend-item {{ display: flex; align-items: center; gap: 12px; }}
+        .legend-color {{ width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; }}
+        .legend-info {{ display: flex; flex-direction: column; }}
+        .legend-label {{ font-weight: bold; color: #2c3e50; }}
+        .legend-details {{ font-size: 0.9em; color: #7f8c8d; margin-top: 2px; }}
         .loading {{ text-align: center; font-size: 1.5em; color: #7f8c8d; }}
         h2 {{ color: #2c3e50; margin-bottom: 20px; }}
     </style>
@@ -130,7 +198,7 @@ async fn serve_app() -> Html<String> {
     Html(html)
 }
 
-fn render_pie_chart(generation_mix: &[FuelSource]) -> String {
+fn render_pie_chart(generation_mix: &[FuelSourceWithIntensity]) -> String {
     let colors = vec![
         "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57",
         "#FF9FF3", "#54A0FF", "#5F27CD", "#00D2D3", "#FF9F43",
@@ -205,7 +273,7 @@ fn render_pie_chart(generation_mix: &[FuelSource]) -> String {
     elements
 }
 
-fn render_legend(generation_mix: &[FuelSource]) -> String {
+fn render_legend(generation_mix: &[FuelSourceWithIntensity]) -> String {
     let colors = vec![
         "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57",
         "#FF9FF3", "#54A0FF", "#5F27CD", "#00D2D3", "#FF9F43",
@@ -214,13 +282,21 @@ fn render_legend(generation_mix: &[FuelSource]) -> String {
     
     generation_mix.iter().enumerate().map(|(i, fuel)| {
         let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
+        let intensity_text = if fuel.carbon_intensity == 0 {
+            "0 gCO₂/kWh".to_string()
+        } else {
+            format!("{} gCO₂/kWh", fuel.carbon_intensity)
+        };
+        
         format!(
             r#"<div class="legend-item">
                 <div class="legend-color" style="background-color: {}"></div>
-                <span class="legend-label">{}</span>
-                <span class="legend-value">{:.1}%</span>
+                <div class="legend-info">
+                    <span class="legend-label">{}</span>
+                    <span class="legend-details">{:.1}% • {}</span>
+                </div>
             </div>"#,
-            color, fuel.fuel, fuel.perc
+            color, fuel.fuel, fuel.perc, intensity_text
         )
     }).collect::<Vec<_>>().join("")
 }

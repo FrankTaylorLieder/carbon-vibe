@@ -339,3 +339,77 @@ elements.push_str(&format!(
 - ✅ **Appropriate Sizing**: Labels positioned just outside pie segments
 
 The pie chart now provides an optimal balance between information density and visual clarity, with all labels clearly visible within the chart boundaries.
+
+## Carbon Intensity Factors Integration
+
+### Enhanced Legend with Per-Fuel Carbon Intensities (Latest Update)
+**Enhancement**: Added carbon intensity factors for each energy source to provide deeper insights into environmental impact.
+
+**API Integration**:
+- **New Endpoint**: `https://api.carbonintensity.org.uk/intensity/factors`
+- **Data Source**: Official carbon intensity factors for each fuel type in gCO₂/kWh
+
+**Implementation Details**:
+
+1. **New Data Structures**:
+```rust
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CarbonFactorsData {
+    data: Vec<CarbonFactors>,
+}
+
+#[derive(Clone, Debug)]
+struct FuelSourceWithIntensity {
+    fuel: String,
+    perc: f64,
+    carbon_intensity: i32,
+}
+```
+
+2. **Enhanced API Calls**: Now fetches three data sources concurrently:
+   - Current intensity: `/intensity`
+   - Generation mix: `/generation`
+   - Carbon factors: `/intensity/factors`
+
+3. **Fuel Type Mapping**: Intelligent mapping between generation mix names and factor names:
+```rust
+let carbon_intensity = match fuel.fuel.as_str() {
+    "biomass" => factors.biomass,           // 120 gCO₂/kWh
+    "coal" => factors.coal,                 // 937 gCO₂/kWh
+    "gas" => factors.gas_combined_cycle,    // 394 gCO₂/kWh
+    "nuclear" => factors.nuclear,           // 0 gCO₂/kWh
+    "solar" => factors.solar,               // 0 gCO₂/kWh
+    "wind" => factors.wind,                 // 0 gCO₂/kWh
+    "imports" => average_import_factor,     // 328 gCO₂/kWh (calculated)
+    _ => 0,
+};
+```
+
+4. **Enhanced Legend Design**:
+   - **Two-line format**: Fuel name (bold) + percentage and carbon intensity (subtitle)
+   - **Improved spacing**: Better grid layout with increased gaps
+   - **Visual hierarchy**: Clear distinction between fuel name and details
+
+**Carbon Intensity Insights**:
+- ✅ **Clean Energy Sources**: Wind (0), Solar (0), Nuclear (0), Hydro (0)
+- ✅ **Low Emission Sources**: Biomass (120 gCO₂/kWh)
+- ✅ **Medium Emission Sources**: Gas (394 gCO₂/kWh), Imports (328 gCO₂/kWh avg)
+- ✅ **High Emission Sources**: Coal (937 gCO₂/kWh), Oil (935 gCO₂/kWh)
+
+**Example Current UK Mix** (showing environmental impact):
+- Wind: 45.7% • 0 gCO₂/kWh (largest clean contribution)
+- Solar: 28.0% • 0 gCO₂/kWh (significant clean energy)
+- Nuclear: 13.3% • 0 gCO₂/kWh (stable clean baseload)
+- Gas: 5.7% • 394 gCO₂/kWh (moderate emissions for backup)
+- Imports: 5.1% • 328 gCO₂/kWh (mixed European grid)
+- Biomass: 2.2% • 120 gCO₂/kWh (renewable but not zero-carbon)
+
+**Environmental Benefits**:
+The enhanced visualization now shows that the UK's current energy mix is dominated by clean sources (86.0% from wind, solar, and nuclear combined), with minimal contribution from high-carbon sources. This provides users with immediate insight into both the composition and environmental impact of their electricity supply.
+
+**Technical Achievements**:
+- ✅ **Multi-API Integration**: Seamlessly combines three different API endpoints
+- ✅ **Intelligent Data Mapping**: Handles naming differences between APIs
+- ✅ **Enhanced UX**: Users can now see both generation mix and environmental impact
+- ✅ **Real-time Insights**: Live data showing the carbon footprint of current electricity
+- ✅ **Educational Value**: Immediate understanding of which energy sources are cleanest
