@@ -25,7 +25,7 @@ struct IntensityData {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct GenerationMixData {
-    data: Vec<GenerationMixEntry>,
+    data: GenerationMixEntry,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -52,16 +52,23 @@ async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSource>), Box<dyn std::erro
     // Fetch generation mix
     let mix_response = reqwest::get("https://api.carbonintensity.org.uk/generation").await?;
     let mix_data: GenerationMixData = mix_response.json().await?;
-    let generation_mix = mix_data.data.first()
-        .map(|entry| entry.generation_mix.clone())
-        .unwrap_or_default();
+    let generation_mix = mix_data.data.generation_mix;
 
     Ok((intensity, generation_mix))
 }
 
 async fn serve_app() -> Html<String> {
     // Fetch data server-side
-    let (intensity, generation_mix) = fetch_carbon_data().await.unwrap_or((0, vec![]));
+    let (intensity, generation_mix) = match fetch_carbon_data().await {
+        Ok(data) => {
+            println!("Successfully fetched data: intensity={}, mix_items={}", data.0, data.1.len());
+            data
+        },
+        Err(e) => {
+            println!("Error fetching data: {}", e);
+            (0, vec![])
+        }
+    };
     
     let html = format!(
         r#"<!DOCTYPE html>
