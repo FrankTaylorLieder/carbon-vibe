@@ -147,8 +147,9 @@ async fn fetch_carbon_data()
     let to_date = twelve_hours_future.format("%Y-%m-%dT%H:%MZ").to_string();
 
     let timeline_url = format!(
-        "https://api.carbonintensity.org.uk/intensity/{}/{}",
-        from_date, to_date
+        "https://api.carbonintensity.org.uk/intensity/{from_date}/{to_date}",
+        from_date = from_date,
+        to_date = to_date
     );
 
     let timeline_response = reqwest::get(&timeline_url).await?;
@@ -190,7 +191,7 @@ async fn serve_app() -> Html<String> {
             data
         }
         Err(e) => {
-            println!("Error fetching data: {}", e);
+            println!("Error fetching data: {error}", error = e);
             (0, vec![], vec![])
         }
     };
@@ -227,23 +228,23 @@ async fn serve_app() -> Html<String> {
             <div class="intensity-display">
                 <h2>Current Carbon Intensity</h2>
                 <div class="intensity-value">
-                    {}
+                    {intensity}
                     <span class="unit"> gCO₂/kWh</span>
                 </div>
                 <div class="chart-container">
-                    {}
+                    {intensity_chart}
                 </div>
             </div>
             <div class="generation-mix">
                 <h2>Energy Generation Mix</h2>
                 <div class="chart-container">
                     <svg width="450" height="450" viewBox="0 0 500 500">
-                        {}
+                        {pie_chart}
                     </svg>
                 </div>
                 <div class="legend">
                     <div class="legend-items">
-                        {}
+                        {legend}
                     </div>
                 </div>
             </div>
@@ -251,10 +252,10 @@ async fn serve_app() -> Html<String> {
     </div>
 </body>
 </html>"#,
-        intensity,
-        render_intensity_chart(&timeline_points),
-        render_pie_chart(&generation_mix),
-        render_legend(&generation_mix)
+        intensity = intensity,
+        intensity_chart = render_intensity_chart(&timeline_points),
+        pie_chart = render_pie_chart(&generation_mix),
+        legend = render_legend(&generation_mix)
     );
 
     Html(html)
@@ -291,16 +292,24 @@ fn render_pie_chart(generation_mix: &[FuelSourceWithIntensity]) -> String {
 
         // Create pie segment path
         let path = format!(
-            "M {} {} L {} {} A {} {} 0 {} 1 {} {} Z",
-            center_x, center_y, x1, y1, radius, radius, large_arc, x2, y2
+            "M {center_x} {center_y} L {x1} {y1} A {radius} {radius} 0 {large_arc} 1 {x2} {y2} Z",
+            center_x = center_x,
+            center_y = center_y,
+            x1 = x1,
+            y1 = y1,
+            radius = radius,
+            large_arc = large_arc,
+            x2 = x2,
+            y2 = y2
         );
 
         let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
 
         // Add pie segment
         elements.push_str(&format!(
-            r#"<path d="{}" fill="{}" stroke="white" stroke-width="2" />"#,
-            path, color
+            r#"<path d="{path}" fill="{color}" stroke="white" stroke-width="2" />"#,
+            path = path,
+            color = color
         ));
 
         // Add label only for segments that are large enough
@@ -317,14 +326,20 @@ fn render_pie_chart(generation_mix: &[FuelSourceWithIntensity]) -> String {
 
             // Add label text (closer to pie, no connecting line)
             elements.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"bold\" fill=\"#333333\">{}</text>",
-                label_x, label_y - 2.0, text_anchor, fuel.fuel
+                "<text x=\"{label_x}\" y=\"{label_y}\" text-anchor=\"{text_anchor}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"bold\" fill=\"#333333\">{fuel_name}</text>",
+                label_x = label_x,
+                label_y = label_y - 2.0,
+                text_anchor = text_anchor,
+                fuel_name = fuel.fuel
             ));
 
             // Add percentage on a second line
             elements.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#666666\">{:.1}%</text>",
-                label_x, label_y + 10.0, text_anchor, fuel.perc
+                "<text x=\"{label_x}\" y=\"{label_y}\" text-anchor=\"{text_anchor}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#666666\">{percentage:.1}%</text>",
+                label_x = label_x,
+                label_y = label_y + 10.0,
+                text_anchor = text_anchor,
+                percentage = fuel.perc
             ));
         }
 
@@ -348,18 +363,21 @@ fn render_legend(generation_mix: &[FuelSourceWithIntensity]) -> String {
             let intensity_text = if fuel.carbon_intensity == 0 {
                 "0 gCO₂/kWh".to_string()
             } else {
-                format!("{} gCO₂/kWh", fuel.carbon_intensity)
+                format!("{carbon_intensity} gCO₂/kWh", carbon_intensity = fuel.carbon_intensity)
             };
 
             format!(
                 r#"<div class="legend-item">
-                <div class="legend-color" style="background-color: {}"></div>
+                <div class="legend-color" style="background-color: {color}"></div>
                 <div class="legend-info">
-                    <span class="legend-label">{}</span>
-                    <span class="legend-details">{:.1}% • {}</span>
+                    <span class="legend-label">{fuel_name}</span>
+                    <span class="legend-details">{percentage:.1}% • {intensity_text}</span>
                 </div>
             </div>"#,
-                color, fuel.fuel, fuel.perc, intensity_text
+                color = color,
+                fuel_name = fuel.fuel,
+                percentage = fuel.perc,
+                intensity_text = intensity_text
             )
         })
         .collect::<Vec<_>>()
@@ -401,9 +419,9 @@ fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
 
         if i == 0 {
             if point.is_forecast {
-                forecast_path_data = format!("M {} {}", x, y);
+                forecast_path_data = format!("M {x} {y}", x = x, y = y);
             } else {
-                path_data = format!("M {} {}", x, y);
+                path_data = format!("M {x} {y}", x = x, y = y);
             }
         } else if point.is_forecast {
             if forecast_path_data.is_empty() {
@@ -414,15 +432,15 @@ fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
                     let prev_y = margin_top + chart_height
                         - ((prev_point.intensity as f64 - min_intensity) / intensity_range)
                             * chart_height;
-                    forecast_path_data = format!("M {} {} L {} {}", prev_x, prev_y, x, y);
+                    forecast_path_data = format!("M {prev_x} {prev_y} L {x} {y}", prev_x = prev_x, prev_y = prev_y, x = x, y = y);
                 } else {
-                    forecast_path_data = format!("M {} {}", x, y);
+                    forecast_path_data = format!("M {x} {y}", x = x, y = y);
                 }
             } else {
-                forecast_path_data.push_str(&format!(" L {} {}", x, y));
+                forecast_path_data.push_str(&format!(" L {x} {y}", x = x, y = y));
             }
         } else {
-            path_data.push_str(&format!(" L {} {}", x, y));
+            path_data.push_str(&format!(" L {x} {y}", x = x, y = y));
         }
     }
 
@@ -458,17 +476,19 @@ fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
 
         // Y-axis label
         y_labels.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#6c757d\" text-anchor=\"end\">{}</text>",
-            margin_left - 5.0, y_pos + 3.0, current_y_value as i32
+            "<text x=\"{x}\" y=\"{y}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#6c757d\" text-anchor=\"end\">{value}</text>",
+            x = margin_left - 5.0,
+            y = y_pos + 3.0,
+            value = current_y_value as i32
         ));
 
         // Horizontal grid line
         y_grid_lines.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\"/>",
-            margin_left,
-            y_pos,
-            margin_left + chart_width,
-            y_pos
+            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"#e9ecef\" stroke-width=\"1\"/>",
+            x1 = margin_left,
+            y1 = y_pos,
+            x2 = margin_left + chart_width,
+            y2 = y_pos
         ));
 
         current_y_value += y_step;
@@ -489,59 +509,72 @@ fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
 
         // X-axis label
         x_labels.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"9\" fill=\"#6c757d\" text-anchor=\"middle\">{}</text>",
-            x_pos, height - 5.0, time_label
+            "<text x=\"{x}\" y=\"{y}\" font-family=\"Arial, sans-serif\" font-size=\"9\" fill=\"#6c757d\" text-anchor=\"middle\">{time_label}</text>",
+            x = x_pos,
+            y = height - 5.0,
+            time_label = time_label
         ));
 
         // Vertical grid line
         x_grid_lines.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\" opacity=\"0.5\"/>",
-            x_pos, margin_top, x_pos, margin_top + chart_height
+            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"#e9ecef\" stroke-width=\"1\" opacity=\"0.5\"/>",
+            x1 = x_pos,
+            y1 = margin_top,
+            x2 = x_pos,
+            y2 = margin_top + chart_height
         ));
     }
 
     format!(
-        "<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">
+        "<svg width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">
             <!-- Background -->
-            <rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"#f8f9fa\" rx=\"5\"/>
+            <rect x=\"0\" y=\"0\" width=\"{width}\" height=\"{height}\" fill=\"#f8f9fa\" rx=\"5\"/>
             
             <!-- Chart area -->
-            <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"#dee2e6\" stroke-width=\"1\"/>
+            <rect x=\"{chart_x}\" y=\"{chart_y}\" width=\"{chart_width}\" height=\"{chart_height}\" fill=\"white\" stroke=\"#dee2e6\" stroke-width=\"1\"/>
             
             <!-- Grid lines -->
-            {}
-            {}
+            {y_grid_lines}
+            {x_grid_lines}
             
             <!-- Historical data -->
-            <path d=\"{}\" stroke=\"#2c3e50\" stroke-width=\"2\" fill=\"none\"/>
+            <path d=\"{path_data}\" stroke=\"#2c3e50\" stroke-width=\"2\" fill=\"none\"/>
             
             <!-- Forecast data -->
-            <path d=\"{}\" stroke=\"#7f8c8d\" stroke-width=\"2\" fill=\"none\" stroke-dasharray=\"5,5\"/>
+            <path d=\"{forecast_path_data}\" stroke=\"#7f8c8d\" stroke-width=\"2\" fill=\"none\" stroke-dasharray=\"5,5\"/>
             
             <!-- Current time marker -->
-            <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e74c3c\" stroke-width=\"2\"/>
+            <line x1=\"{current_x}\" y1=\"{marker_y1}\" x2=\"{current_x}\" y2=\"{marker_y2}\" stroke=\"#e74c3c\" stroke-width=\"2\"/>
             
             <!-- Y-axis labels -->
-            {}
+            {y_labels}
             
             <!-- X-axis labels -->
-            {}
+            {x_labels}
             
             <!-- Axis labels -->
-            <text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\">Time</text>
-            <text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\">gCO₂/kWh</text>
+            <text x=\"{time_label_x}\" y=\"{time_label_y}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\">Time</text>
+            <text x=\"{y_axis_label_x}\" y=\"{y_axis_label_y}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\" transform=\"rotate(-90 {y_axis_label_x} {y_axis_label_y})\">gCO₂/kWh</text>
         </svg>",
-        width, height, width, height,
-        width, height,
-        margin_left, margin_top, chart_width, chart_height,
-        y_grid_lines, x_grid_lines,
-        path_data,
-        forecast_path_data,
-        current_x, margin_top, current_x, margin_top + chart_height,
-        y_labels,
-        x_labels,
-        width / 2.0, height - 15.0,
-        15.0, height / 2.0, 15.0, height / 2.0
+        width = width,
+        height = height,
+        chart_x = margin_left,
+        chart_y = margin_top,
+        chart_width = chart_width,
+        chart_height = chart_height,
+        y_grid_lines = y_grid_lines,
+        x_grid_lines = x_grid_lines,
+        path_data = path_data,
+        forecast_path_data = forecast_path_data,
+        current_x = current_x,
+        marker_y1 = margin_top,
+        marker_y2 = margin_top + chart_height,
+        y_labels = y_labels,
+        x_labels = x_labels,
+        time_label_x = width / 2.0,
+        time_label_y = height - 15.0,
+        y_axis_label_x = 15.0,
+        y_axis_label_y = height / 2.0
     )
 }
 
@@ -552,7 +585,7 @@ async fn main() {
         .layer(ServiceBuilder::new());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("Server running on http://{}", addr);
+    println!("Server running on http://{addr}", addr = addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

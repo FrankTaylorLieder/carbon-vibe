@@ -46,7 +46,7 @@ async fn fetch_carbon_intensity() -> Result<(), Box<dyn std::error::Error>> {
     trace!("Parsed response data: {:?}", carbon_data);
     
     if let Some(entry) = carbon_data.data.first() {
-        println!("{}", entry.intensity.actual);
+        println!("{intensity}", intensity = entry.intensity.actual);
     }
     
     Ok(())

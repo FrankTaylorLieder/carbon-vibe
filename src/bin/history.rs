@@ -45,8 +45,9 @@ async fn fetch_carbon_intensity_history() -> Result<(), Box<dyn std::error::Erro
     let to_date = now.format("%Y-%m-%dT%H:%MZ").to_string();
     
     let url = format!(
-        "https://api.carbonintensity.org.uk/intensity/{}/{}",
-        from_date, to_date
+        "https://api.carbonintensity.org.uk/intensity/{from_date}/{to_date}",
+        from_date = from_date,
+        to_date = to_date
     );
     
     trace!("Making API request to: {}", url);
@@ -77,7 +78,7 @@ async fn fetch_carbon_intensity_history() -> Result<(), Box<dyn std::error::Erro
     // Print hourly averages
     for (hour, intensities) in hourly_data {
         let avg_intensity = intensities.iter().sum::<i32>() / intensities.len() as i32;
-        println!("{}: {}", hour, avg_intensity);
+        println!("{hour}: {intensity}", hour = hour, intensity = avg_intensity);
     }
     
     Ok(())

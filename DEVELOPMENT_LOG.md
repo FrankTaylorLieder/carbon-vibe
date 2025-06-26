@@ -503,3 +503,166 @@ The graph shows intensity ranging from 35-150 gCO₂/kWh over the 24-hour period
 - ✅ **Data Confidence**: Visual distinction between actual and forecast data
 
 The enhanced dashboard now provides comprehensive carbon intensity insights combining current values, energy source breakdown with environmental impact, and 24-hour trend visualization in a single, cohesive interface.
+
+## Code Quality Improvements (Latest Updates)
+
+### Compile Warning Fixes
+**Enhancement**: Fixed all compile warnings identified by Clippy and Rust compiler.
+
+**Warnings Resolved**:
+
+1. **Collapsible else-if Block** (`src/bin/web.rs`):
+   ```rust
+   // Before: nested else-if structure
+   } else {
+       if point.is_forecast {
+           // ... logic
+       }
+   }
+   
+   // After: collapsed structure
+   } else if point.is_forecast {
+       // ... logic
+   }
+   ```
+
+2. **Unnecessary or_insert_with** (`src/bin/history.rs`):
+   ```rust
+   // Before: manual Vec::new construction
+   hourly_data.entry(hour_key).or_insert_with(Vec::new).push(intensity);
+   
+   // After: using or_default()
+   hourly_data.entry(hour_key).or_default().push(intensity);
+   ```
+
+3. **Unused Variable Warning**: Fixed `_hours_per_point` variable naming in chart generation.
+
+**Result**: ✅ **Zero Compile Warnings** - Clean build across all targets with `cargo clippy --all-targets`
+
+### Enhanced Axis Labels for Intensity Graph
+**Enhancement**: Added professional Y-axis and X-axis labels to the 24-hour intensity graph for improved data interpretation.
+
+**Y-Axis Improvements**:
+- **Carbon Intensity Labels**: Shows gCO₂/kWh values with dynamic scaling
+- **Smart Stepping**: Automatically calculates appropriate intervals (minimum 20 units)
+- **Grid Lines**: Horizontal reference lines for easy value reading
+- **Right-aligned Labels**: Positioned 5px left of chart area for clean appearance
+
+**X-Axis Improvements**:
+- **Time Markers**: Shows actual timestamps every 2 hours (e.g., "14:30", "16:30")
+- **Real-time Calculation**: Based on actual data timeline (12h past + 12h future)
+- **Vertical Grid Lines**: Semi-transparent guides for temporal reference
+- **Center-aligned Labels**: Positioned below chart with proper spacing
+
+**Layout Enhancements**:
+- **Larger Chart**: Increased to 500x180px to accommodate axis labels
+- **Professional Margins**: 50px left, 40px bottom for proper label spacing
+- **Chart Background**: White area with border for clear data presentation
+- **Axis Titles**: "Time" (bottom) and "gCO₂/kWh" (left, rotated)
+
+**Technical Implementation**:
+```rust
+// Y-axis labels with dynamic scaling
+let y_step = ((max_intensity - min_intensity) / 4.0).ceil().max(20.0);
+
+// X-axis markers every 2 hours (4 data points = 2 hours)
+for i in (0..timeline_points.len()).step_by(4) {
+    let time_offset = twelve_hours_ago + chrono::Duration::minutes((i as f64 * 30.0) as i64);
+    let time_label = time_offset.format("%H:%M").to_string();
+}
+```
+
+**User Benefits**:
+- ✅ **Easy Value Reading**: Y-axis shows exact carbon intensity values
+- ✅ **Time Context**: X-axis provides clear temporal reference points
+- ✅ **Professional Appearance**: Chart looks publication-ready
+- ✅ **Data Interpretation**: Users can easily read trends and specific values
+
+### Named Parameters Migration
+**Enhancement**: Replaced all positional parameters in `format!` and `println!` calls with named parameters for improved code readability and maintainability.
+
+**Scope of Changes**:
+- **Files Updated**: `src/bin/web.rs`, `src/bin/history.rs`, `src/bin/current.rs`
+- **Total Conversions**: 20+ format calls converted to named parameters
+- **Function Coverage**: All major formatting functions updated
+
+**Key Improvements**:
+
+1. **HTML Template Formatting**:
+   ```rust
+   // Before: positional parameters
+   format!(r#"...{}...{}...{}...{}..."#,
+       intensity,
+       render_intensity_chart(&timeline_points),
+       render_pie_chart(&generation_mix),
+       render_legend(&generation_mix)
+   )
+   
+   // After: named parameters
+   format!(r#"...{intensity}...{intensity_chart}...{pie_chart}...{legend}..."#,
+       intensity = intensity,
+       intensity_chart = render_intensity_chart(&timeline_points),
+       pie_chart = render_pie_chart(&generation_mix),
+       legend = render_legend(&generation_mix)
+   )
+   ```
+
+2. **Complex SVG Chart Generation**:
+   ```rust
+   // Before: 20+ positional parameters (error-prone)
+   format!("<svg width=\"{}\" height=\"{}\"...{}", width, height, /* many more */)
+   
+   // After: clear named mapping
+   format!("<svg width=\"{width}\" height=\"{height}\"...{path_data}...{forecast_path_data}...",
+       width = width,
+       height = height,
+       chart_x = margin_left,
+       chart_y = margin_top,
+       path_data = path_data,
+       forecast_path_data = forecast_path_data,
+       current_x = current_x,
+       // ... all parameters clearly named
+   )
+   ```
+
+3. **API URL Construction**:
+   ```rust
+   // Before: positional
+   format!("https://api.carbonintensity.org.uk/intensity/{}/{}", from_date, to_date)
+   
+   // After: named
+   format!("https://api.carbonintensity.org.uk/intensity/{from_date}/{to_date}",
+       from_date = from_date,
+       to_date = to_date
+   )
+   ```
+
+4. **Logging and Console Output**:
+   ```rust
+   // Before: positional
+   println!("{}: {}", hour, avg_intensity);
+   
+   // After: named
+   println!("{hour}: {intensity}", hour = hour, intensity = avg_intensity);
+   ```
+
+**Technical Benefits**:
+- ✅ **Type Safety**: Reduced risk of parameter order mistakes
+- ✅ **Maintainability**: Easy to modify without counting positions
+- ✅ **Readability**: Self-documenting parameter purpose
+- ✅ **Debugging**: Clearer error messages when parameters don't match
+- ✅ **Refactoring**: Safe to reorder parameters in format strings
+
+**Quality Assurance**:
+- ✅ **Build Verification**: `cargo build --all-targets` passes cleanly
+- ✅ **Functionality Preserved**: All applications work identically
+- ✅ **No Performance Impact**: Named parameters compile to identical bytecode
+- ✅ **Future-Proof**: Easier to extend and modify format strings
+
+**Code Quality Metrics**:
+- **Zero Compile Warnings**: Complete clean build
+- **Enhanced Readability**: Significantly improved code clarity
+- **Maintainability Score**: Reduced cognitive load for developers
+- **Error Resistance**: Eliminated positional parameter mismatches
+
+The codebase now follows modern Rust best practices with clean, self-documenting format strings and professional-grade data visualization with proper axis labeling.

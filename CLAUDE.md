@@ -33,4 +33,4 @@ This is currently a minimal Rust binary project with no external dependencies. T
 
 ## Development Workflow
 
-- Remember to update the DEVELOPMENT LOG for all changes as we work on this project.
+- Remember to always update the DEVELOPMENT LOG for all changes as we work on this project.

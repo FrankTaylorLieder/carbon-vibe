@@ -41,3 +41,7 @@ project in a log file in the project... need to ask how to do that next.
   - Needed to ask for x and y axis and labels.
 - Asked CC to fix all warnings. It used clippy and fixed the resulting
 suggestions.
+- Asked CC to replace the positional params in the format! calls with named
+parameters... it looks very brittle at the moment!
+- These two code improvement changes did not trigger development log updates...
+did CC forget or does it assume these don't need logging?
