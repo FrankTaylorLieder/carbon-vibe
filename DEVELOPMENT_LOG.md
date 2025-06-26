@@ -253,3 +253,89 @@ curl "https://api.carbonintensity.org.uk/generation"
 - Other: 0.0%
 
 The web application is now fully functional and accurately displays live UK carbon intensity data with visual breakdown of energy sources.
+
+## Enhanced Pie Chart Visualization
+
+### External Labels with Connecting Lines (Latest Update)
+**Enhancement**: Added external labels with connecting lines to the pie chart for better readability.
+
+**Changes Made**:
+1. **Expanded SVG Canvas**: Increased from 400x400 to 500x500 to accommodate external labels
+2. **Centered Pie Chart**: Updated coordinates to center the pie (250,250) in the larger canvas
+3. **External Label Positioning**: 
+   - Labels positioned at radius 220px from center
+   - Connecting lines start at radius 155px (just outside pie)
+   - Smart text anchoring: `end` for left side labels, `start` for right side labels
+4. **Label Filtering**: Only show labels for segments ≥0.5% to avoid clutter
+5. **Label Content**: Display both fuel name and percentage (e.g., "wind (35.0%)")
+
+**Technical Implementation**:
+```rust
+// Calculate label position (middle of arc, extended outward)
+let mid_angle = start_angle + angle / 2.0;
+let label_radius = 220.0; // Distance from center for label
+let line_start_radius = 155.0; // Start line just outside pie
+
+// Smart text anchoring based on position
+let text_anchor = if mid_angle > π/2 && mid_angle < 3π/2 {
+    "end"  // Left side of chart
+} else {
+    "start"  // Right side of chart
+};
+```
+
+**Visual Improvements**:
+- ✅ **Clear Labels**: Each significant energy source clearly labeled outside the pie
+- ✅ **Connecting Lines**: Gray lines (#666666) connect labels to their pie segments
+- ✅ **Percentage Display**: Shows both name and percentage for each source
+- ✅ **Clean Layout**: Small segments (<0.5%) excluded from labels to prevent clutter
+- ✅ **Proper Alignment**: Text anchored intelligently based on position
+
+**Current Example Data Visualization**:
+- Wind: 35.0% (largest segment, top-right)
+- Gas: 16.3% (bottom-left)
+- Nuclear: 16.1% (left side)
+- Solar: 12.1% (top-left)
+- Imports: 11.2% (bottom-right)
+- Biomass: 9.2% (right side)
+
+The enhanced pie chart now provides a professional, easy-to-read visualization of the UK's energy generation mix with clear labeling and connecting lines for each significant energy source.
+
+### Label Positioning Refinement (Latest Update)
+**Issue**: Some external labels were being cut off at the panel edges.
+
+**Solution**: Repositioned labels closer to pie segments and removed connecting lines.
+
+**Changes Made**:
+1. **Closer Label Positioning**: Moved labels from radius 220px to 175px (closer to pie edge)
+2. **Removed Connecting Lines**: Eliminated gray connecting lines to simplify the design
+3. **Two-Line Labels**: Split labels into fuel name (bold, 11px) and percentage (lighter, 10px)
+4. **Center Alignment**: All labels now use "middle" text anchor for consistent alignment
+5. **Reduced Canvas**: Adjusted SVG display size to 450x450px while keeping 500x500 viewBox
+
+**Technical Implementation**:
+```rust
+// Simplified label positioning - closer to pie edge
+let label_radius = 175.0; // Closer to the pie edge
+let label_x = center_x + label_radius * mid_angle.cos();
+let label_y = center_y + label_radius * mid_angle.sin();
+
+// Two-line labels with different styling
+elements.push_str(&format!(
+    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" font-weight=\"bold\">{}</text>",
+    label_x, label_y - 2.0, fuel.fuel
+));
+elements.push_str(&format!(
+    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"10\" fill=\"#666666\">{:.1}%</text>",
+    label_x, label_y + 10.0, fuel.perc
+));
+```
+
+**Final Visual Result**:
+- ✅ **No Cut-off Labels**: All labels now fit within the chart boundaries
+- ✅ **Clean Design**: Removed connecting lines for simpler appearance
+- ✅ **Better Readability**: Two-line format with fuel name and percentage
+- ✅ **Consistent Alignment**: All labels center-aligned for uniformity
+- ✅ **Appropriate Sizing**: Labels positioned just outside pie segments
+
+The pie chart now provides an optimal balance between information density and visual clarity, with all labels clearly visible within the chart boundaries.

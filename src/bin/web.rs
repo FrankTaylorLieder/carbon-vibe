@@ -108,7 +108,7 @@ async fn serve_app() -> Html<String> {
             <div class="generation-mix">
                 <h2>Energy Generation Mix</h2>
                 <div class="chart-container">
-                    <svg width="400" height="400" viewBox="0 0 400 400">
+                    <svg width="450" height="450" viewBox="0 0 500 500">
                         {}
                     </svg>
                 </div>
@@ -139,36 +139,70 @@ fn render_pie_chart(generation_mix: &[FuelSource]) -> String {
     
     let total: f64 = generation_mix.iter().map(|f| f.perc).sum();
     let mut start_angle = 0.0;
-    let mut paths = String::new();
+    let mut elements = String::new();
     
     for (i, fuel) in generation_mix.iter().enumerate() {
         let percentage = fuel.perc / total;
         let angle = percentage * 2.0 * std::f64::consts::PI;
         let end_angle = start_angle + angle;
         
-        let x1 = 200.0 + 150.0 * start_angle.cos();
-        let y1 = 200.0 + 150.0 * start_angle.sin();
-        let x2 = 200.0 + 150.0 * end_angle.cos();
-        let y2 = 200.0 + 150.0 * end_angle.sin();
+        // Skip very small segments for labels but still draw them
+        let show_label = fuel.perc >= 0.5;
+        
+        let center_x = 250.0;
+        let center_y = 250.0;
+        let radius = 150.0;
+        
+        let x1 = center_x + radius * start_angle.cos();
+        let y1 = center_y + radius * start_angle.sin();
+        let x2 = center_x + radius * end_angle.cos();
+        let y2 = center_y + radius * end_angle.sin();
         
         let large_arc = if angle > std::f64::consts::PI { 1 } else { 0 };
         
+        // Create pie segment path
         let path = format!(
-            "M 200 200 L {} {} A 150 150 0 {} 1 {} {} Z",
-            x1, y1, large_arc, x2, y2
+            "M {} {} L {} {} A {} {} 0 {} 1 {} {} Z",
+            center_x, center_y, x1, y1, radius, radius, large_arc, x2, y2
         );
         
         let color = colors.get(i % colors.len()).unwrap_or(&"#999999");
         
-        paths.push_str(&format!(
+        // Add pie segment
+        elements.push_str(&format!(
             r#"<path d="{}" fill="{}" stroke="white" stroke-width="2" />"#,
             path, color
         ));
         
+        // Add label only for segments that are large enough
+        if show_label {
+            // Calculate label position (middle of arc, closer to the pie)
+            let mid_angle = start_angle + angle / 2.0;
+            let label_radius = 175.0; // Closer to the pie edge
+            
+            let label_x = center_x + label_radius * mid_angle.cos();
+            let label_y = center_y + label_radius * mid_angle.sin();
+            
+            // Center-align all text
+            let text_anchor = "middle";
+            
+            // Add label text (closer to pie, no connecting line)
+            elements.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"bold\" fill=\"#333333\">{}</text>",
+                label_x, label_y - 2.0, text_anchor, fuel.fuel
+            ));
+            
+            // Add percentage on a second line
+            elements.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#666666\">{:.1}%</text>",
+                label_x, label_y + 10.0, text_anchor, fuel.perc
+            ));
+        }
+        
         start_angle = end_angle;
     }
     
-    paths
+    elements
 }
 
 fn render_legend(generation_mix: &[FuelSource]) -> String {

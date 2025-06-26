@@ -30,3 +30,7 @@ This is currently a minimal Rust binary project with no external dependencies. T
 
 ## References
 - Carbon Intensity API v2.0.0 Documentation: https://carbon-intensity.github.io/api-definitions/#carbon-intensity-api-v2-0-0
+
+## Development Workflow
+
+- Remember to update the DEVELOPMENT LOG for all changes as we work on this project.
