@@ -98,6 +98,12 @@ The web dashboard provides:
 - **Energy generation pie chart** with external labels
 - **Detailed legend** with carbon intensity factors for each source
 
+### Screenshot
+
+![Carbon Vibe Dashboard](assets/screenshot.png)
+
+*The dashboard showing real-time UK carbon intensity data with 24-hour trends and energy source breakdown.*
+
 ## API Integration
 
 Carbon Vibe integrates with multiple Carbon Intensity API endpoints:

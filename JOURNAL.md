@@ -46,3 +46,4 @@ parameters... it looks very brittle at the moment!
 - These two code improvement changes did not trigger development log updates...
 did CC forget or does it assume these don't need logging?
 - Adding a README.md
+  - Added a screenshot... I needed to take the screenshot, but CC added the link.
