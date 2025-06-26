@@ -413,3 +413,93 @@ The enhanced visualization now shows that the UK's current energy mix is dominat
 - ✅ **Enhanced UX**: Users can now see both generation mix and environmental impact
 - ✅ **Real-time Insights**: Live data showing the carbon footprint of current electricity
 - ✅ **Educational Value**: Immediate understanding of which energy sources are cleanest
+
+## 24-Hour Intensity Graph Integration (Latest Update)
+
+### Enhanced Current Carbon Intensity Pane
+**Enhancement**: Added a 24-hour intensity graph showing 12 hours of historical data and 12 hours of forecast data to the Current Carbon Intensity pane.
+
+**Implementation Details**:
+
+1. **Extended Data Fetching**: Modified `fetch_carbon_data()` to include timeline data:
+   ```rust
+   // Fetch 24-hour timeline data (12 hours past + 12 hours future)
+   let now = chrono::Utc::now();
+   let twelve_hours_ago = now - chrono::Duration::hours(12);
+   let twelve_hours_future = now + chrono::Duration::hours(12);
+   
+   let timeline_url = format!(
+       "https://api.carbonintensity.org.uk/intensity/{}/{}",
+       from_date, to_date
+   );
+   ```
+
+2. **Data Processing**: Converts API response into `IntensityPoint` structs:
+   ```rust
+   struct IntensityPoint {
+       datetime: String,
+       intensity: i32,
+       is_forecast: bool,
+   }
+   ```
+
+3. **SVG Line Chart**: Created `render_intensity_chart()` function with:
+   - **Historical Data**: Solid line showing past 12 hours
+   - **Forecast Data**: Dashed line showing next 12 hours  
+   - **Current Time Marker**: Red vertical line indicating "now"
+   - **Grid Lines**: Horizontal guidelines for readability
+   - **Time Labels**: "12h ago", "now", "12h future" markers
+
+4. **Chart Features**:
+   - **Dynamic Scaling**: Automatically scales Y-axis based on data range
+   - **Visual Distinction**: Historical (solid) vs forecast (dashed) lines
+   - **Responsive Design**: 400x120px chart fits well in dashboard layout
+   - **Error Handling**: Gracefully handles empty data or single data points
+
+**Technical Implementation**:
+```rust
+fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
+    // Calculate scaling for intensity values
+    let min_intensity = *intensities.iter().min().unwrap_or(&0) as f64;
+    let max_intensity = *intensities.iter().max().unwrap_or(&100) as f64;
+    
+    // Generate SVG path data for line chart
+    for (i, point) in timeline_points.iter().enumerate() {
+        let x = margin + (i as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+        let y = margin + chart_height - ((point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
+        
+        if point.is_forecast {
+            forecast_path_data.push_str(&format!(" L {} {}", x, y));
+        } else {
+            path_data.push_str(&format!(" L {} {}", x, y));
+        }
+    }
+}
+```
+
+**Data Structure Updates**:
+- Modified `CarbonIntensityEntry` to include optional `from` and `to` fields for timeline data
+- Enhanced `fetch_carbon_data()` return type to include `Vec<IntensityPoint>`
+- Updated HTML template to include chart in intensity display pane
+
+**Visual Integration**:
+- **Seamless Layout**: Chart positioned below current intensity value
+- **Consistent Styling**: Matches existing dashboard color scheme
+- **Informative Display**: Shows trends and patterns in carbon intensity over time
+
+**API Data Usage**:
+- **48 Data Points**: 30-minute intervals over 24 hours (12h past + 12h future)
+- **Smart Fallbacks**: Uses actual values when available, forecast otherwise
+- **Current Time Detection**: Identifies transition point between historical and forecast data
+
+**Current Example**:
+The graph shows intensity ranging from 35-150 gCO₂/kWh over the 24-hour period, with clear visual distinction between historical solid line and forecast dashed line, separated by a red "now" marker.
+
+**Benefits for Users**:
+- ✅ **Trend Visualization**: See how carbon intensity changes throughout the day
+- ✅ **Planning Tool**: Use forecast data to plan energy-intensive activities
+- ✅ **Historical Context**: Understand recent patterns and variations
+- ✅ **Real-time Awareness**: Current position clearly marked on timeline
+- ✅ **Data Confidence**: Visual distinction between actual and forecast data
+
+The enhanced dashboard now provides comprehensive carbon intensity insights combining current values, energy source breakdown with environmental impact, and 24-hour trend visualization in a single, cohesive interface.

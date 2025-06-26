@@ -22,5 +22,6 @@
   - I asked CC to always update DEVELOPMENT LOG with for changes in the project... it said it would... not sure how it will remember that.
   - DONE Check this is happening without being asked.
     - It remembered to update the dev log...
-        - DONE Add this to the CLAUDE.md asking to keep the file up to do date with all changes: "# Remember to update the DEVELOPMENT LOG with all project changes"
-
+      - DONE Add this to the CLAUDE.md asking to keep the file up to do date with all changes: "# Remember to update the DEVELOPMENT LOG with all project changes"
+- Added a carbon intensity history and forecast graph.
+  - Needed to ask for x and y axis and labels.

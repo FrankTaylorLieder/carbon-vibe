@@ -14,6 +14,9 @@ struct CarbonIntensityData {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CarbonIntensityEntry {
+    from: Option<String>,
+    #[allow(dead_code)]
+    to: Option<String>,
     intensity: IntensityData,
 }
 
@@ -80,8 +83,15 @@ struct FuelSourceWithIntensity {
     carbon_intensity: i32,
 }
 
+#[derive(Clone, Debug)]
+struct IntensityPoint {
+    datetime: String,
+    intensity: i32,
+    is_forecast: bool,
+}
 
-async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>), Box<dyn std::error::Error>> {
+
+async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>, Vec<IntensityPoint>), Box<dyn std::error::Error>> {
     // Fetch current intensity
     let intensity_response = reqwest::get("https://api.carbonintensity.org.uk/intensity").await?;
     let intensity_data: CarbonIntensityData = intensity_response.json().await?;
@@ -121,19 +131,48 @@ async fn fetch_carbon_data() -> Result<(i32, Vec<FuelSourceWithIntensity>), Box<
         }
     }).collect();
 
-    Ok((intensity, enriched_mix))
+    // Fetch 24-hour timeline data (12 hours past + 12 hours future)
+    let now = chrono::Utc::now();
+    let twelve_hours_ago = now - chrono::Duration::hours(12);
+    let twelve_hours_future = now + chrono::Duration::hours(12);
+    
+    let from_date = twelve_hours_ago.format("%Y-%m-%dT%H:%MZ").to_string();
+    let to_date = twelve_hours_future.format("%Y-%m-%dT%H:%MZ").to_string();
+    
+    let timeline_url = format!(
+        "https://api.carbonintensity.org.uk/intensity/{}/{}",
+        from_date, to_date
+    );
+    
+    let timeline_response = reqwest::get(&timeline_url).await?;
+    let timeline_data: CarbonIntensityData = timeline_response.json().await?;
+    
+    // Process timeline data into points
+    let timeline_points: Vec<IntensityPoint> = timeline_data.data.into_iter().filter_map(|entry| {
+        let datetime = entry.from?;
+        let intensity = entry.intensity.actual.unwrap_or(entry.intensity.forecast.unwrap_or(0));
+        let is_forecast = entry.intensity.actual.is_none();
+        
+        Some(IntensityPoint {
+            datetime,
+            intensity,
+            is_forecast,
+        })
+    }).collect();
+
+    Ok((intensity, enriched_mix, timeline_points))
 }
 
 async fn serve_app() -> Html<String> {
     // Fetch data server-side
-    let (intensity, generation_mix) = match fetch_carbon_data().await {
+    let (intensity, generation_mix, timeline_points) = match fetch_carbon_data().await {
         Ok(data) => {
-            println!("Successfully fetched data: intensity={}, mix_items={}", data.0, data.1.len());
+            println!("Successfully fetched data: intensity={}, mix_items={}, timeline_points={}", data.0, data.1.len(), data.2.len());
             data
         },
         Err(e) => {
             println!("Error fetching data: {}", e);
-            (0, vec![])
+            (0, vec![], vec![])
         }
     };
     
@@ -172,6 +211,9 @@ async fn serve_app() -> Html<String> {
                     {}
                     <span class="unit"> gCO₂/kWh</span>
                 </div>
+                <div class="chart-container">
+                    {}
+                </div>
             </div>
             <div class="generation-mix">
                 <h2>Energy Generation Mix</h2>
@@ -191,6 +233,7 @@ async fn serve_app() -> Html<String> {
 </body>
 </html>"#,
         intensity,
+        render_intensity_chart(&timeline_points),
         render_pie_chart(&generation_mix),
         render_legend(&generation_mix)
     );
@@ -299,6 +342,173 @@ fn render_legend(generation_mix: &[FuelSourceWithIntensity]) -> String {
             color, fuel.fuel, fuel.perc, intensity_text
         )
     }).collect::<Vec<_>>().join("")
+}
+
+fn render_intensity_chart(timeline_points: &[IntensityPoint]) -> String {
+    if timeline_points.is_empty() {
+        return String::new();
+    }
+
+    let width = 500.0;
+    let height = 180.0;
+    let margin_left = 50.0;
+    let margin_right = 20.0;
+    let margin_top = 20.0;
+    let margin_bottom = 40.0;
+    let chart_width = width - margin_left - margin_right;
+    let chart_height = height - margin_top - margin_bottom;
+    
+    // Find min and max intensity for scaling
+    let intensities: Vec<i32> = timeline_points.iter().map(|p| p.intensity).collect();
+    let min_intensity = *intensities.iter().min().unwrap_or(&0) as f64;
+    let max_intensity = *intensities.iter().max().unwrap_or(&100) as f64;
+    let intensity_range = max_intensity - min_intensity;
+    
+    if intensity_range == 0.0 {
+        return String::new();
+    }
+    
+    // Generate path data
+    let mut path_data = String::new();
+    let mut forecast_path_data = String::new();
+    
+    for (i, point) in timeline_points.iter().enumerate() {
+        let x = margin_left + (i as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+        let y = margin_top + chart_height - ((point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
+        
+        if i == 0 {
+            if point.is_forecast {
+                forecast_path_data = format!("M {} {}", x, y);
+            } else {
+                path_data = format!("M {} {}", x, y);
+            }
+        } else {
+            if point.is_forecast {
+                if forecast_path_data.is_empty() {
+                    // Start forecast path from last historical point
+                    if let Some(prev_point) = timeline_points.get(i - 1) {
+                        let prev_x = margin_left + ((i - 1) as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+                        let prev_y = margin_top + chart_height - ((prev_point.intensity as f64 - min_intensity) / intensity_range) * chart_height;
+                        forecast_path_data = format!("M {} {} L {} {}", prev_x, prev_y, x, y);
+                    } else {
+                        forecast_path_data = format!("M {} {}", x, y);
+                    }
+                } else {
+                    forecast_path_data.push_str(&format!(" L {} {}", x, y));
+                }
+            } else {
+                path_data.push_str(&format!(" L {} {}", x, y));
+            }
+        }
+    }
+    
+    // Find current time marker
+    let now = chrono::Utc::now();
+    let current_index = timeline_points.iter().position(|p| {
+        if let Ok(point_time) = chrono::DateTime::parse_from_str(&p.datetime, "%Y-%m-%dT%H:%MZ") {
+            point_time.timestamp() > now.timestamp()
+        } else {
+            false
+        }
+    }).unwrap_or(timeline_points.len() / 2);
+    
+    let current_x = margin_left + (current_index as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+    
+    // Calculate Y-axis labels (every 20 units, rounded)
+    let y_step = ((max_intensity - min_intensity) / 4.0).ceil().max(20.0);
+    let y_start = (min_intensity / y_step).floor() * y_step;
+    let y_end = (max_intensity / y_step).ceil() * y_step;
+    
+    // Generate Y-axis labels
+    let mut y_labels = String::new();
+    let mut y_grid_lines = String::new();
+    let mut current_y_value = y_start;
+    while current_y_value <= y_end {
+        let y_pos = margin_top + chart_height - ((current_y_value - min_intensity) / intensity_range) * chart_height;
+        
+        // Y-axis label
+        y_labels.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"10\" fill=\"#6c757d\" text-anchor=\"end\">{}</text>",
+            margin_left - 5.0, y_pos + 3.0, current_y_value as i32
+        ));
+        
+        // Horizontal grid line
+        y_grid_lines.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\"/>",
+            margin_left, y_pos, margin_left + chart_width, y_pos
+        ));
+        
+        current_y_value += y_step;
+    }
+    
+    // Generate X-axis markers every 2 hours (8 points since we have 48 points over 24 hours)
+    let mut x_labels = String::new();
+    let mut x_grid_lines = String::new();
+    let _hours_per_point = 0.5; // 30-minute intervals
+    let now = chrono::Utc::now();
+    let twelve_hours_ago = now - chrono::Duration::hours(12);
+    
+    for i in (0..timeline_points.len()).step_by(4) { // Every 4 points = 2 hours
+        let x_pos = margin_left + (i as f64 / (timeline_points.len() - 1) as f64) * chart_width;
+        let time_offset = twelve_hours_ago + chrono::Duration::minutes((i as f64 * 30.0) as i64);
+        let time_label = time_offset.format("%H:%M").to_string();
+        
+        // X-axis label
+        x_labels.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"9\" fill=\"#6c757d\" text-anchor=\"middle\">{}</text>",
+            x_pos, height - 5.0, time_label
+        ));
+        
+        // Vertical grid line
+        x_grid_lines.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e9ecef\" stroke-width=\"1\" opacity=\"0.5\"/>",
+            x_pos, margin_top, x_pos, margin_top + chart_height
+        ));
+    }
+
+    format!(
+        "<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">
+            <!-- Background -->
+            <rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"#f8f9fa\" rx=\"5\"/>
+            
+            <!-- Chart area -->
+            <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"#dee2e6\" stroke-width=\"1\"/>
+            
+            <!-- Grid lines -->
+            {}
+            {}
+            
+            <!-- Historical data -->
+            <path d=\"{}\" stroke=\"#2c3e50\" stroke-width=\"2\" fill=\"none\"/>
+            
+            <!-- Forecast data -->
+            <path d=\"{}\" stroke=\"#7f8c8d\" stroke-width=\"2\" fill=\"none\" stroke-dasharray=\"5,5\"/>
+            
+            <!-- Current time marker -->
+            <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e74c3c\" stroke-width=\"2\"/>
+            
+            <!-- Y-axis labels -->
+            {}
+            
+            <!-- X-axis labels -->
+            {}
+            
+            <!-- Axis labels -->
+            <text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\">Time</text>
+            <text x=\"{}\" y=\"{}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#495057\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\">gCO₂/kWh</text>
+        </svg>",
+        width, height, width, height,
+        width, height,
+        margin_left, margin_top, chart_width, chart_height,
+        y_grid_lines, x_grid_lines,
+        path_data,
+        forecast_path_data,
+        current_x, margin_top, current_x, margin_top + chart_height,
+        y_labels,
+        x_labels,
+        width / 2.0, height - 15.0,
+        15.0, height / 2.0, 15.0, height / 2.0
+    )
 }
 
 #[tokio::main]
